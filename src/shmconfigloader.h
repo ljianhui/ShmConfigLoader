@@ -16,6 +16,7 @@
 #define ERR_SHMAT -2003
 #define ERR_SHMDT -2004
 #define ERR_SHMCTL_RMID -2005
+#define ERR_SHM_LODING -2006
 
 typedef struct Config Config;
 typedef struct ConfigSection ConfigSection;
@@ -82,7 +83,7 @@ private:
 	/*
 	 * 根据配置文件conf的section数,kv数和字节数,把配置文件转换成转换对象,保存在共享内存中
 	 */
-	int LoadToShm(const char *conf, size_t sectionCount, size_t kvCount, size_t shmBytes);
+	int LoadToShm(const char *conf, size_t sectionCount, size_t kvCount);
 
 	int GetShm(size_t size);
 	int DetShm();

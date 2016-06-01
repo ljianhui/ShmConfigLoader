@@ -137,14 +137,20 @@ int ShmConfigLoader::AttachConfigShm()
 		return ret;
 	}
 
-	int totalBytes = m_configPtr->shmBytes;
+	size_t shmBytes = m_configPtr->shmBytes;
+	if (shmBytes == 0)
+	{
+		m_errMsg = "shm is loding";
+		return ERR_SHM_LODING;
+	}
+
 	ret = DetShm();
 	if (ret != 0)
 	{
 		return ret;
 	}
 
-	return GetShm(totalBytes);
+	return GetShm(shmBytes);
 }
 
 int ShmConfigLoader::CreateConfigShm(const char *conf)
@@ -175,17 +181,20 @@ int ShmConfigLoader::CreateConfigShm(const char *conf)
 		return ret;
 	}
 
-	ret = LoadToShm(conf, sectionCount, kvCount, shmBytes);
+	m_configPtr->shmBytes = 0;
+	m_configPtr->sectionCount = 0;
+	ret = LoadToShm(conf, sectionCount, kvCount);
 	if (ret != 0)
 	{
 		return ret;
 	}
 
+	m_configPtr->shmBytes = shmBytes;
 	m_configPtr->sectionCount = sectionCount;
 	return 0;
 }
 
-int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvCount, size_t shmBytes)
+int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvCount)
 {
 	FILE *fconf = fopen(conf, "r");
 	if (fconf == NULL)
@@ -194,8 +203,6 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 		return ERR_OPEN_CONFIG;
 	}
 
-	m_configPtr->shmBytes = shmBytes;
-	m_configPtr->sectionCount = sectionCount;
 	ConfigSection *section = m_configPtr->sections;
 	char *context = (char*)m_configPtr + 
 		sizeof(Config) +
