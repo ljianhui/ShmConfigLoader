@@ -58,6 +58,11 @@ public:
 	}
 
 private:
+	// 禁止对象复制
+	ShmConfigLoader(const ShmConfigLoader &obj){}
+	ShmConfigLoader& operator=(const ShmConfigLoader &r){return *this;}
+
+private:
 	/*
 	 * MODE_READ模式下,被LoadConfig函数调用,Attach共享内存中的配置对象
 	 */
