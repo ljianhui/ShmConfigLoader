@@ -215,6 +215,7 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 	bool isFirstsection = true;
 	while (fgets(buffer, sizeof(buffer)-1, fconf))
 	{
+		TrimString(buffer);
 		if (buffer[0] == '#' || strncmp(buffer, "//", 2) == 0 ||
 			buffer[0] == '\n' || strcmp(buffer, "\r\n") == 0)
 		{
