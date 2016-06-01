@@ -11,21 +11,21 @@ typedef size_t offset_t;
 
 typedef struct ConfigKeyValue
 {
-	offset_t key;
-	offset_t value;
+	offset_t key;	// key的文本的地址
+	offset_t value;	// value的文本的地址
 }ConfigKeyValue;
 
 typedef struct ConfigSession
 {
-	offset_t name;
-	size_t kvCount;
+	offset_t name; 	//[]的文本的地址
+	size_t kvCount;	// kv的数量, ConfigKeyValue的元素个数
 	ConfigKeyValue kv[0];
 }ConfigSession;
 
 struct Config
 {
-	size_t shmBytes;
-	size_t sessionCount;
+	size_t shmBytes;	// 共享内存的总字节数
+	size_t sessionCount;// session的个数
 	ConfigSession sessions[0];
 };
 
@@ -39,7 +39,8 @@ ShmConfigLoader::~ShmConfigLoader()
 	DetShm();
 }
 
-int ShmConfigLoader::AnalyseConfig(const char *conf, size_t &sessionCount, size_t &kvCount, size_t &bytes)
+int ShmConfigLoader::AnalyseConfig(const char *conf, 
+	size_t &sessionCount, size_t &kvCount, size_t &bytes)
 {
 	FILE *fconf = fopen(conf, "r");
 	if (fconf == NULL)
@@ -55,6 +56,7 @@ int ShmConfigLoader::AnalyseConfig(const char *conf, size_t &sessionCount, size_
 	while (fgets(buffer, sizeof(buffer) - 1, fconf))
 	{
 		TrimString(buffer);
+		// 忽略注释
 		if (buffer[0] == '#' || strncmp(buffer, "//", 2) == 0 ||
 			buffer[0] == '\n' || strcmp(buffer, "\r\n") == 0)
 		{
@@ -67,11 +69,13 @@ int ShmConfigLoader::AnalyseConfig(const char *conf, size_t &sessionCount, size_
 		if (leftBracket == buffer && rightBracket != NULL && equal == NULL)
 		{
 			++sessionCount;
+			// [xxx] => xxx\0
 			bytes += (strlen(buffer) - 1);
 		}
 		else if (sessionCount > 0 && leftBracket == NULL && leftBracket == NULL && equal != NULL)
 		{
 			++kvCount;
+			// xxx=yyy => xxx\0yyy\0
 			bytes += (strlen(buffer) + 1);
 		}
 		else
@@ -145,6 +149,12 @@ int ShmConfigLoader::AttachConfigShm()
 
 int ShmConfigLoader::CreateConfigShm(const char *conf)
 {
+	if (conf == NULL)
+	{
+		m_errMsg = "config file is NULL";
+		return ERR_OPEN_CONFIG;
+	}
+	
 	size_t sessionCount = 0;
 	size_t kvCount = 0;
 	size_t bytes = 0;
