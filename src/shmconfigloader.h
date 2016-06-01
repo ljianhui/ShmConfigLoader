@@ -18,7 +18,7 @@
 #define ERR_SHMCTL_RMID -2005
 
 typedef struct Config Config;
-typedef struct ConfigSession ConfigSession;
+typedef struct ConfigSection ConfigSection;
 
 class ShmConfigLoader
 {
@@ -44,7 +44,7 @@ public:
 	 */
 	int LoadConfig(const char *conf = NULL);
 
-	std::string GetValue(const char *sessionName, const char *key)const;
+	std::string GetValue(const char *sectionName, const char *key)const;
 	void PrintConfig()const;
 
 	/*
@@ -70,14 +70,14 @@ private:
 	int CreateConfigShm(const char *conf);
 	
 	/*
-	 * 分析配置文件conf的内容,计算文件中的总session数,kv数和有效的总字节数
+	 * 分析配置文件conf的内容,计算文件中的总section数,kv数和有效的总字节数
 	 */
-	int AnalyseConfig(const char *conf, size_t &sessionCount, size_t &kvCount, size_t &bytes);
+	int AnalyseConfig(const char *conf, size_t &sectionCount, size_t &kvCount, size_t &bytes);
 
 	/*
-	 * 根据配置文件conf的session数,kv数和字节数,把配置文件转换成转换对象,保存在共享内存中
+	 * 根据配置文件conf的section数,kv数和字节数,把配置文件转换成转换对象,保存在共享内存中
 	 */
-	int LoadToShm(const char *conf, size_t sessionCount, size_t kvCount, size_t shmBytes);
+	int LoadToShm(const char *conf, size_t sectionCount, size_t kvCount, size_t shmBytes);
 
 	int GetShm(size_t size);
 	int DetShm();
@@ -88,9 +88,9 @@ private:
 	void TrimString(char *str);
 
 	/*
-	 * 相当于++sessin,因为ConfigSession为变长结构,该函数计算++session的偏移字节数
+	 * 相当于++sessin,因为ConfigSection为变长结构,该函数计算++section的偏移字节数
 	 */
-	ConfigSession* IncConfigSession(ConfigSession *session)const;
+	ConfigSection* IncConfigSection(ConfigSection *section)const;
 
 private:
 	int m_shmId;

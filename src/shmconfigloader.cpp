@@ -15,18 +15,18 @@ typedef struct ConfigKeyValue
 	offset_t value;	// value的文本的地址
 }ConfigKeyValue;
 
-typedef struct ConfigSession
+typedef struct ConfigSection
 {
 	offset_t name; 	//[]的文本的地址
 	size_t kvCount;	// kv的数量, ConfigKeyValue的元素个数
 	ConfigKeyValue kv[0];
-}ConfigSession;
+}ConfigSection;
 
 struct Config
 {
 	size_t shmBytes;	// 共享内存的总字节数
-	size_t sessionCount;// session的个数
-	ConfigSession sessions[0];
+	size_t sectionCount;// section的个数
+	ConfigSection sections[0];
 };
 
 ShmConfigLoader::ShmConfigLoader(key_t shmKey, unsigned int mode):
@@ -40,7 +40,7 @@ ShmConfigLoader::~ShmConfigLoader()
 }
 
 int ShmConfigLoader::AnalyseConfig(const char *conf, 
-	size_t &sessionCount, size_t &kvCount, size_t &bytes)
+	size_t &sectionCount, size_t &kvCount, size_t &bytes)
 {
 	FILE *fconf = fopen(conf, "r");
 	if (fconf == NULL)
@@ -49,7 +49,7 @@ int ShmConfigLoader::AnalyseConfig(const char *conf,
 		return ERR_OPEN_CONFIG;
 	}
 
-	sessionCount = 0;
+	sectionCount = 0;
 	kvCount = 0;
 	bytes = 0;
 	char buffer[1024] = {0};
@@ -68,11 +68,11 @@ int ShmConfigLoader::AnalyseConfig(const char *conf,
 		char *rightBracket = strstr(buffer, "]");
 		if (leftBracket == buffer && rightBracket != NULL && equal == NULL)
 		{
-			++sessionCount;
+			++sectionCount;
 			// [xxx] => xxx\0
 			bytes += (strlen(buffer) - 1);
 		}
-		else if (sessionCount > 0 && leftBracket == NULL && leftBracket == NULL && equal != NULL)
+		else if (sectionCount > 0 && leftBracket == NULL && leftBracket == NULL && equal != NULL)
 		{
 			++kvCount;
 			// xxx=yyy => xxx\0yyy\0
@@ -110,9 +110,9 @@ void ShmConfigLoader::TrimString(char *str)
 	}
 }
 
-ConfigSession* ShmConfigLoader::IncConfigSession(ConfigSession *session)const
+ConfigSection* ShmConfigLoader::IncConfigSection(ConfigSection *section)const
 {
-	return (ConfigSession*)((char*)session + sizeof(ConfigSession) + sizeof(ConfigKeyValue) * session->kvCount);
+	return (ConfigSection*)((char*)section + sizeof(ConfigSection) + sizeof(ConfigKeyValue) * section->kvCount);
 }
 
 int ShmConfigLoader::LoadConfig(const char *conf)
@@ -155,10 +155,10 @@ int ShmConfigLoader::CreateConfigShm(const char *conf)
 		return ERR_OPEN_CONFIG;
 	}
 	
-	size_t sessionCount = 0;
+	size_t sectionCount = 0;
 	size_t kvCount = 0;
 	size_t bytes = 0;
-	int ret = AnalyseConfig(conf, sessionCount, kvCount, bytes);
+	int ret = AnalyseConfig(conf, sectionCount, kvCount, bytes);
 	if (ret != 0)
 	{
 		return ret;
@@ -166,7 +166,7 @@ int ShmConfigLoader::CreateConfigShm(const char *conf)
 
 	size_t shmBytes = 
 		sizeof(Config) + 
-		sizeof(ConfigSession) * sessionCount + 
+		sizeof(ConfigSection) * sectionCount + 
 		sizeof(ConfigKeyValue) * kvCount + 
 		bytes;
 	ret = GetShm(shmBytes);
@@ -175,17 +175,17 @@ int ShmConfigLoader::CreateConfigShm(const char *conf)
 		return ret;
 	}
 
-	ret = LoadToShm(conf, sessionCount, kvCount, shmBytes);
+	ret = LoadToShm(conf, sectionCount, kvCount, shmBytes);
 	if (ret != 0)
 	{
 		return ret;
 	}
 
-	m_configPtr->sessionCount = sessionCount;
+	m_configPtr->sectionCount = sectionCount;
 	return 0;
 }
 
-int ShmConfigLoader::LoadToShm(const char *conf, size_t sessionCount, size_t kvCount, size_t shmBytes)
+int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvCount, size_t shmBytes)
 {
 	FILE *fconf = fopen(conf, "r");
 	if (fconf == NULL)
@@ -195,17 +195,17 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sessionCount, size_t kvC
 	}
 
 	m_configPtr->shmBytes = shmBytes;
-	m_configPtr->sessionCount = sessionCount;
-	ConfigSession *session = m_configPtr->sessions;
+	m_configPtr->sectionCount = sectionCount;
+	ConfigSection *section = m_configPtr->sections;
 	char *context = (char*)m_configPtr + 
 		sizeof(Config) +
-		sizeof(ConfigSession) * sessionCount + 
+		sizeof(ConfigSection) * sectionCount + 
 		sizeof(ConfigKeyValue) * kvCount;
 
 	char buffer[1024] = {0};
 	char *pc = '\0';
 	unsigned len = 0;
-	bool isFirstSession = true;
+	bool isFirstsection = true;
 	while (fgets(buffer, sizeof(buffer)-1, fconf))
 	{
 		if (buffer[0] == '#' || strncmp(buffer, "//", 2) == 0 ||
@@ -216,11 +216,11 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sessionCount, size_t kvC
 
 		if (buffer[0] == '[')
 		{
-			if (!isFirstSession)
+			if (!isFirstsection)
 			{
-				session = IncConfigSession(session);
+				section = IncConfigSection(section);
 			}
-			session->kvCount = 0;
+			section->kvCount = 0;
 			pc = strstr(buffer + 1, "]");
 			if (pc == NULL)
 			{
@@ -231,9 +231,9 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sessionCount, size_t kvC
 			TrimString(buffer+1);
 			len = strlen(buffer+1);
 			memcpy(context, buffer + 1, len + 1);
-			session->name = context - (char*)m_configPtr;
+			section->name = context - (char*)m_configPtr;
 			context += (len + 1);
-			isFirstSession = false;
+			isFirstsection = false;
 		}
 		else
 		{
@@ -251,15 +251,15 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sessionCount, size_t kvC
 
 			len = strlen(strKey);
 			memcpy(context, strKey, len + 1);
-			session->kv[session->kvCount].key = context - (char*)m_configPtr;
+			section->kv[section->kvCount].key = context - (char*)m_configPtr;
 			context += (len + 1);
 
 			len = strlen(strValue);
 			memcpy(context, strValue, len + 1);
-			session->kv[session->kvCount].value = context - (char*)m_configPtr;
+			section->kv[section->kvCount].value = context - (char*)m_configPtr;
 			context += (len + 1);
 
-			++session->kvCount;
+			++section->kvCount;
 		}
 	}
 	return 0;
@@ -302,28 +302,28 @@ int ShmConfigLoader::DetShm()
 	return 0;
 }
 
-string ShmConfigLoader::GetValue(const char *sessionName, const char *key)const
+string ShmConfigLoader::GetValue(const char *sectionName, const char *key)const
 {
-	if (m_configPtr == NULL || m_shmId == 0 || sessionName == NULL || key == NULL)
+	if (m_configPtr == NULL || m_shmId == 0 || sectionName == NULL || key == NULL)
 	{
 		return NULL;
 	}
 
 	char *shmPtr = (char*)m_configPtr;
-	ConfigSession *session = m_configPtr->sessions;
-	for (size_t i = 0; i < m_configPtr->sessionCount; ++i)
+	ConfigSection *section = m_configPtr->sections;
+	for (size_t i = 0; i < m_configPtr->sectionCount; ++i)
 	{
-		if (strcmp(shmPtr + session->name, sessionName) == 0)
+		if (strcmp(shmPtr + section->name, sectionName) == 0)
 		{
-			for (size_t j = 0; j < session->kvCount; ++j)
+			for (size_t j = 0; j < section->kvCount; ++j)
 			{
-				if (strcmp(shmPtr + session->kv[j].key, key) == 0)
+				if (strcmp(shmPtr + section->kv[j].key, key) == 0)
 				{
-					return string(shmPtr + session->kv[j].value);
+					return string(shmPtr + section->kv[j].value);
 				}
 			}
 		}
-		session = IncConfigSession(session);
+		section = IncConfigSection(section);
 	}
 	return string();
 }
@@ -336,15 +336,15 @@ void ShmConfigLoader::PrintConfig()const
 	}
 
 	char *shmPtr = (char*)m_configPtr;
-	ConfigSession *session = m_configPtr->sessions;
-	for (size_t i = 0; i < m_configPtr->sessionCount; ++i)
+	ConfigSection *section = m_configPtr->sections;
+	for (size_t i = 0; i < m_configPtr->sectionCount; ++i)
 	{
-		printf("[%s]\n", shmPtr + session->name);
-		for (size_t j = 0; j < session->kvCount; ++j)
+		printf("[%s]\n", shmPtr + section->name);
+		for (size_t j = 0; j < section->kvCount; ++j)
 		{
-			printf("%s=%s\n", shmPtr + session->kv[j].key, shmPtr + session->kv[j].value);
+			printf("%s=%s\n", shmPtr + section->kv[j].key, shmPtr + section->kv[j].value);
 		}
-		session = IncConfigSession(session);
+		section = IncConfigSection(section);
 	}
 }
 
