@@ -138,16 +138,16 @@ int ShmConfigLoader::AttachConfigShm()
 	}
 
 	size_t shmBytes = m_configPtr->shmBytes;
-	if (shmBytes == 0)
-	{
-		m_errMsg = "shm is loding";
-		return ERR_SHM_LODING;
-	}
-
 	ret = DetShm();
 	if (ret != 0)
 	{
 		return ret;
+	}
+
+	if (shmBytes == 0)
+	{
+		m_errMsg = "shm is loding";
+		return ERR_SHM_LODING;
 	}
 
 	return GetShm(shmBytes);
