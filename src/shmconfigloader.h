@@ -20,6 +20,7 @@
 
 typedef struct Config Config;
 typedef struct ConfigSection ConfigSection;
+typedef struct ConfigKeyValue ConfigKeyValue;
 
 class ShmConfigLoader
 {
@@ -84,6 +85,18 @@ private:
 	 * 根据配置文件conf的section数,kv数和字节数,把配置文件转换成转换对象,保存在共享内存中
 	 */
 	int LoadToShm(const char *conf, size_t sectionCount, size_t kvCount);
+
+	/*
+	 * 对所有section里的key-value排序，注意，排序后只是section里的key有序，section还是无序的
+	 */
+	void SortKeys();
+	void QuickSortKeys(ConfigKeyValue *keyValues, int begin, int end);
+	void SwapKeyValue(ConfigKeyValue &x, ConfigKeyValue &y);
+
+	/*
+	 * 在key-value列表中使用二分查找key对应的值
+	 */
+	std::string BinSearch(const ConfigKeyValue *keyValues, size_t kvCount, const char *key)const;
 
 	int GetShm(size_t size);
 	int DetShm();

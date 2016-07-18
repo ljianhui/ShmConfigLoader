@@ -14,6 +14,7 @@ int main()
 	}
 
 	printf("websize.baidu=%s\n", configLoader.GetValue("website", "baidu").c_str());
+	printf("network.protocol=%s\n", configLoader.GetValue("network", "protocol").c_str());
 	printf("ext.py=%s\n", configLoader.GetValue("ext", "py").c_str());
 	printf("ext.txt=%s\n", configLoader.GetValue("ext", "txt").c_str());
 	configLoader.FreeShm();

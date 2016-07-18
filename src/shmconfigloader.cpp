@@ -1,5 +1,7 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <string>
 #include "shmconfigloader.h"
 
@@ -182,15 +184,16 @@ int ShmConfigLoader::CreateConfigShm(const char *conf)
 	}
 
 	m_configPtr->shmBytes = 0;
-	m_configPtr->sectionCount = 0;
+	m_configPtr->sectionCount = sectionCount;
 	ret = LoadToShm(conf, sectionCount, kvCount);
 	if (ret != 0)
 	{
 		return ret;
 	}
 
+	SortKeys();
+
 	m_configPtr->shmBytes = shmBytes;
-	m_configPtr->sectionCount = sectionCount;
 	return 0;
 }
 
@@ -273,6 +276,93 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 	return 0;
 }
 
+void ShmConfigLoader::SortKeys()
+{
+	if (m_configPtr == NULL)
+	{
+		return;
+	}
+
+	srand(time(NULL));
+	ConfigSection *section = m_configPtr->sections;
+	for (size_t i = 0; i < m_configPtr->sectionCount; ++i)
+	{
+		QuickSortKeys(section->kv, 0, (int)(section->kvCount - 1));	
+		section = IncConfigSection(section);
+	}
+}
+
+void ShmConfigLoader::QuickSortKeys(ConfigKeyValue *keyValues, int begin, int end)
+{
+	if (keyValues == NULL || begin >= end)
+	{
+		return;
+	}
+
+	//随机选取一个元素作为枢纽，并与最后一个元素交换
+	int ic = rand()%(end - begin + 1) + begin;
+	SwapKeyValue(keyValues[ic], keyValues[end]);
+
+	const char *shmPtr = (const char*)m_configPtr;
+	ConfigKeyValue centre = keyValues[end];
+	int i = begin;
+	int j = end - 1;
+	while(true)
+	{
+		//从前向后扫描，找到第一个小于枢纽的值，
+		//在到达数组末尾前，必定结束循环,因为最后一个值为centre
+		while(strcmp(shmPtr + keyValues[i].key, shmPtr + centre.key) < 0)
+			++i;
+		//从后向前扫描，此时要检查下标，防止数组越界
+		while(j >= begin && strcmp(shmPtr + keyValues[i].key, shmPtr + centre.key) > 0)
+			--j;
+		//如果没有完成一趟交换，则交换
+		if(i < j)
+			SwapKeyValue(keyValues[i++], keyValues[j--]);
+		else
+			break;
+	}
+	//把枢纽放在正确的位置
+	SwapKeyValue(keyValues[i], keyValues[end]);
+	QuickSortKeys(keyValues, begin, i - 1);
+	QuickSortKeys(keyValues, i + 1, end);
+}
+
+void ShmConfigLoader::SwapKeyValue(ConfigKeyValue &x, ConfigKeyValue &y)
+{
+	ConfigKeyValue tmp = x;
+	x.key = y.key;
+	x.value = y.value;
+	y.key = tmp.key;
+	y.value = tmp.value;
+}
+
+string ShmConfigLoader::BinSearch(const ConfigKeyValue *keyValues, size_t kvCount, const char *key)const
+{
+	const char *shmPtr = (const char*)m_configPtr;
+	int begin = 0;
+	int end = (int)kvCount - 1;
+	while (begin <= end)
+	{
+		int middle = begin + (end - begin) / 2;
+		int ret = strcmp(shmPtr + keyValues[middle].key, key);
+		if (ret == 0)
+		{
+			return string(shmPtr + keyValues[middle].value);
+		}
+		else if (ret < 0)
+		{
+			begin = middle + 1;
+		}
+		else
+		{
+			end = middle - 1;
+		}
+
+	}
+	return string();
+}
+
 int ShmConfigLoader::GetShm(size_t size)
 {	
 	m_shmId = shmget(m_shmKey, size, m_mode);
@@ -314,7 +404,7 @@ string ShmConfigLoader::GetValue(const char *sectionName, const char *key)const
 {
 	if (m_configPtr == NULL || m_shmId == 0 || sectionName == NULL || key == NULL)
 	{
-		return NULL;
+		return string();
 	}
 
 	char *shmPtr = (char*)m_configPtr;
@@ -323,13 +413,7 @@ string ShmConfigLoader::GetValue(const char *sectionName, const char *key)const
 	{
 		if (strcmp(shmPtr + section->name, sectionName) == 0)
 		{
-			for (size_t j = 0; j < section->kvCount; ++j)
-			{
-				if (strcmp(shmPtr + section->kv[j].key, key) == 0)
-				{
-					return string(shmPtr + section->kv[j].value);
-				}
-			}
+			return BinSearch(section->kv, section->kvCount, key);
 		}
 		section = IncConfigSection(section);
 	}
