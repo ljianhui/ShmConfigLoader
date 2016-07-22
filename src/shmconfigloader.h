@@ -86,18 +86,6 @@ private:
 	 */
 	int LoadToShm(const char *conf, size_t sectionCount, size_t kvCount);
 
-	/*
-	 * 对所有section里的key-value排序，注意，排序后只是section里的key有序，section还是无序的
-	 */
-	void SortKeys();
-	void QuickSortKeys(ConfigKeyValue *keyValues, int begin, int end);
-	void SwapKeyValue(ConfigKeyValue &x, ConfigKeyValue &y);
-
-	/*
-	 * 在key-value列表中使用二分查找key对应的值
-	 */
-	std::string BinSearch(const ConfigKeyValue *keyValues, size_t kvCount, const char *key)const;
-
 	int GetShm(size_t size);
 	int DetShm();
 
@@ -106,10 +94,16 @@ private:
 	 */
 	void TrimString(char *str);
 
-	/*
-	 * 相当于++sessin,因为ConfigSection为变长结构,该函数计算++section的偏移字节数
-	 */
-	ConfigSection* IncConfigSection(ConfigSection *section)const;
+	void SortConfig();
+
+	template<typename T>
+	void QuickSort(T *elems, int begin, int end);
+
+	template<typename T>
+	void Swap(T &x, T &y);
+
+	template<typename T>
+	int BinSearch(const T *elems, size_t size, const char *key)const;
 
 private:
 	int m_shmId;

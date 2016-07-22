@@ -19,9 +19,9 @@ typedef struct ConfigKeyValue
 
 typedef struct ConfigSection
 {
-	offset_t name; 	//[]的文本的地址
+	offset_t name; 	// []的文本的地址
+	offset_t kvs;	// Key-values 数组偏移地址
 	size_t kvCount;	// kv的数量, ConfigKeyValue的元素个数
-	ConfigKeyValue kv[0];
 }ConfigSection;
 
 struct Config
@@ -30,6 +30,26 @@ struct Config
 	size_t sectionCount;// section的个数
 	ConfigSection sections[0];
 };
+
+static int ShmDataCompare(const ConfigKeyValue &x, const ConfigKeyValue &y, const void *baseAddr)
+{
+	return strcmp((const char*)baseAddr + x.key, (const char*)baseAddr + y.key);
+}
+
+static int ShmDataCompare(const ConfigKeyValue &x, const char *y, const void *baseAddr)
+{
+	return strcmp((const char*)baseAddr + x.key, y);
+}
+
+static int ShmDataCompare(const ConfigSection &x, const ConfigSection &y, const void *baseAddr)
+{
+	return strcmp((const char*)baseAddr + x.name, (const char*)baseAddr + y.name);
+}
+
+static int ShmDataCompare(const ConfigSection &x, const char *y, const void *baseAddr)
+{
+	return strcmp((const char*)baseAddr + x.name, y);
+}
 
 ShmConfigLoader::ShmConfigLoader(key_t shmKey, unsigned int mode):
 	m_shmId(-1), m_mode(mode), m_shmKey(shmKey), m_configPtr(NULL)
@@ -112,11 +132,6 @@ void ShmConfigLoader::TrimString(char *str)
 	}
 }
 
-ConfigSection* ShmConfigLoader::IncConfigSection(ConfigSection *section)const
-{
-	return (ConfigSection*)((char*)section + sizeof(ConfigSection) + sizeof(ConfigKeyValue) * section->kvCount);
-}
-
 int ShmConfigLoader::LoadConfig(const char *conf)
 {
 	if (m_mode == MODE_READ)
@@ -191,7 +206,7 @@ int ShmConfigLoader::CreateConfigShm(const char *conf)
 		return ret;
 	}
 
-	SortKeys();
+	SortConfig();
 
 	m_configPtr->shmBytes = shmBytes;
 	return 0;
@@ -206,8 +221,12 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 		return ERR_OPEN_CONFIG;
 	}
 
+	char *shmPtr = (char*)m_configPtr;
 	ConfigSection *section = m_configPtr->sections;
-	char *context = (char*)m_configPtr + 
+	ConfigKeyValue *keyValue = (ConfigKeyValue*)(shmPtr + 
+		sizeof(Config) + 
+		sizeof(ConfigSection) * sectionCount);
+	char *context = shmPtr +
 		sizeof(Config) +
 		sizeof(ConfigSection) * sectionCount + 
 		sizeof(ConfigKeyValue) * kvCount;
@@ -215,7 +234,7 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 	char buffer[1024] = {0};
 	char *pc = '\0';
 	unsigned len = 0;
-	bool isFirstsection = true;
+	bool isFirstSection = true;
 	while (fgets(buffer, sizeof(buffer)-1, fconf))
 	{
 		TrimString(buffer);
@@ -227,24 +246,26 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 
 		if (buffer[0] == '[')
 		{
-			if (!isFirstsection)
-			{
-				section = IncConfigSection(section);
-			}
-			section->kvCount = 0;
 			pc = strstr(buffer + 1, "]");
 			if (pc == NULL)
 			{
 				continue;
 			}
 
+			if (!isFirstSection)
+			{
+				++section;
+			}
+			section->kvs = (char*)keyValue - shmPtr;
+			section->kvCount = 0;
+
 			*pc = '\0';
 			TrimString(buffer+1);
 			len = strlen(buffer+1);
 			memcpy(context, buffer + 1, len + 1);
-			section->name = context - (char*)m_configPtr;
+			section->name = context - shmPtr;
 			context += (len + 1);
-			isFirstsection = false;
+			isFirstSection = false;
 		}
 		else
 		{
@@ -262,21 +283,22 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 
 			len = strlen(strKey);
 			memcpy(context, strKey, len + 1);
-			section->kv[section->kvCount].key = context - (char*)m_configPtr;
+			keyValue->key = context - shmPtr;
 			context += (len + 1);
 
 			len = strlen(strValue);
 			memcpy(context, strValue, len + 1);
-			section->kv[section->kvCount].value = context - (char*)m_configPtr;
+			keyValue->value = context - shmPtr;
 			context += (len + 1);
 
 			++section->kvCount;
+			++keyValue;
 		}
 	}
 	return 0;
 }
 
-void ShmConfigLoader::SortKeys()
+void ShmConfigLoader::SortConfig()
 {
 	if (m_configPtr == NULL)
 	{
@@ -284,71 +306,76 @@ void ShmConfigLoader::SortKeys()
 	}
 
 	srand(time(NULL));
+
+	QuickSort(m_configPtr->sections, 0, (int)(m_configPtr->sectionCount - 1));
+
+	char *shmPtr = (char*)m_configPtr;
 	ConfigSection *section = m_configPtr->sections;
 	for (size_t i = 0; i < m_configPtr->sectionCount; ++i)
 	{
-		QuickSortKeys(section->kv, 0, (int)(section->kvCount - 1));	
-		section = IncConfigSection(section);
+		QuickSort((ConfigKeyValue*)(shmPtr + section->kvs), 0, (int)(section->kvCount - 1));	
+		++section;
 	}
 }
 
-void ShmConfigLoader::QuickSortKeys(ConfigKeyValue *keyValues, int begin, int end)
+template<typename T>
+void ShmConfigLoader::QuickSort(T *elems, int begin, int end)
 {
-	if (keyValues == NULL || begin >= end)
+	if (elems == NULL || begin >= end)
 	{
 		return;
 	}
 
 	//随机选取一个元素作为枢纽，并与最后一个元素交换
 	int ic = rand()%(end - begin + 1) + begin;
-	SwapKeyValue(keyValues[ic], keyValues[end]);
+	Swap(elems[ic], elems[end]);
 
-	const char *shmPtr = (const char*)m_configPtr;
-	ConfigKeyValue centre = keyValues[end];
+	const void *shmPtr = (const void*)m_configPtr;
+	const T &centre = elems[end];
 	int i = begin;
 	int j = end - 1;
 	while(true)
 	{
 		//从前向后扫描，找到第一个小于枢纽的值，
 		//在到达数组末尾前，必定结束循环,因为最后一个值为centre
-		while(strcmp(shmPtr + keyValues[i].key, shmPtr + centre.key) < 0)
+		while (ShmDataCompare(elems[i], centre, shmPtr) < 0)
 			++i;
 		//从后向前扫描，此时要检查下标，防止数组越界
-		while(j >= begin && strcmp(shmPtr + keyValues[i].key, shmPtr + centre.key) > 0)
+		while(j >= begin && ShmDataCompare(elems[j], centre, shmPtr) > 0)
 			--j;
 		//如果没有完成一趟交换，则交换
 		if(i < j)
-			SwapKeyValue(keyValues[i++], keyValues[j--]);
+			Swap(elems[i++], elems[j--]);
 		else
 			break;
 	}
 	//把枢纽放在正确的位置
-	SwapKeyValue(keyValues[i], keyValues[end]);
-	QuickSortKeys(keyValues, begin, i - 1);
-	QuickSortKeys(keyValues, i + 1, end);
+	Swap(elems[i], elems[end]);
+	QuickSort(elems, begin, i - 1);
+	QuickSort(elems, i + 1, end);
 }
 
-void ShmConfigLoader::SwapKeyValue(ConfigKeyValue &x, ConfigKeyValue &y)
+template<typename T>
+void ShmConfigLoader::Swap(T &x, T &y)
 {
-	ConfigKeyValue tmp = x;
-	x.key = y.key;
-	x.value = y.value;
-	y.key = tmp.key;
-	y.value = tmp.value;
+	T tmp(x);
+	x = y;
+	y = tmp;
 }
 
-string ShmConfigLoader::BinSearch(const ConfigKeyValue *keyValues, size_t kvCount, const char *key)const
+template<typename T>
+int ShmConfigLoader::BinSearch(const T *elems, size_t size, const char *key)const
 {
 	const char *shmPtr = (const char*)m_configPtr;
 	int begin = 0;
-	int end = (int)kvCount - 1;
+	int end = (int)size - 1;
 	while (begin <= end)
 	{
 		int middle = begin + (end - begin) / 2;
-		int ret = strcmp(shmPtr + keyValues[middle].key, key);
+		int ret = ShmDataCompare(elems[middle], key, shmPtr);
 		if (ret == 0)
 		{
-			return string(shmPtr + keyValues[middle].value);
+			return middle;
 		}
 		else if (ret < 0)
 		{
@@ -360,7 +387,7 @@ string ShmConfigLoader::BinSearch(const ConfigKeyValue *keyValues, size_t kvCoun
 		}
 
 	}
-	return string();
+	return -1;
 }
 
 int ShmConfigLoader::GetShm(size_t size)
@@ -408,14 +435,16 @@ string ShmConfigLoader::GetValue(const char *sectionName, const char *key)const
 	}
 
 	char *shmPtr = (char*)m_configPtr;
-	ConfigSection *section = m_configPtr->sections;
-	for (size_t i = 0; i < m_configPtr->sectionCount; ++i)
+	int i = BinSearch(m_configPtr->sections, m_configPtr->sectionCount, sectionName);
+	if (i >= 0)
 	{
-		if (strcmp(shmPtr + section->name, sectionName) == 0)
+		ConfigSection *section = &m_configPtr->sections[i];
+		int j = BinSearch((ConfigKeyValue*)(shmPtr + section->kvs), section->kvCount, key);
+		if (j >= 0)
 		{
-			return BinSearch(section->kv, section->kvCount, key);
+			ConfigKeyValue *keyValue = ((ConfigKeyValue*)(shmPtr + section->kvs)) + j;
+			return string(shmPtr + keyValue->value);
 		}
-		section = IncConfigSection(section);
 	}
 	return string();
 }
@@ -434,9 +463,10 @@ void ShmConfigLoader::PrintConfig()const
 		printf("[%s]\n", shmPtr + section->name);
 		for (size_t j = 0; j < section->kvCount; ++j)
 		{
-			printf("%s=%s\n", shmPtr + section->kv[j].key, shmPtr + section->kv[j].value);
+			ConfigKeyValue *keyValue = ((ConfigKeyValue*)(shmPtr + section->kvs)) + j;
+			printf("%s=%s\n", shmPtr + keyValue->key, shmPtr + keyValue->value);
 		}
-		section = IncConfigSection(section);
+		++section;
 	}
 }
 
