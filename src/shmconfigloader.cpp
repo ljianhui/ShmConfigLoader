@@ -79,8 +79,7 @@ int ShmConfigLoader::AnalyseConfig(const char *conf,
 	{
 		TrimString(buffer);
 		// 忽略注释
-		if (buffer[0] == '#' || strncmp(buffer, "//", 2) == 0 ||
-			buffer[0] == '\n' || strcmp(buffer, "\r\n") == 0)
+		if (buffer[0] == '\0' || buffer[0] == '#' || strncmp(buffer, "//", 2) == 0) 
 		{
 			continue;
 		}
