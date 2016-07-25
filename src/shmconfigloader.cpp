@@ -61,6 +61,33 @@ ShmConfigLoader::~ShmConfigLoader()
 	DetShm();
 }
 
+bool ShmConfigLoader::PreHandleInput(char *line)
+{
+	TrimString(line);
+	// 注释行或空行，无需要进一步处理
+	if (line[0] == '\0' || line[0] == '#' || strncmp(line, "//", 2) == 0) 
+	{
+		return false;
+	}
+
+	// 行内注释，删除注释
+	char *comment = strstr(line, "//");
+	if (comment != NULL)
+	{
+		*comment = '\0';
+		TrimString(line);
+	}
+
+	comment = strstr(line, "#");
+	if (comment != NULL)
+	{
+		*comment = '\0';
+		TrimString(line);
+	}
+
+	return true;
+}
+
 int ShmConfigLoader::AnalyseConfig(const char *conf, 
 	size_t &sectionCount, size_t &kvCount, size_t &bytes)
 {
@@ -77,9 +104,7 @@ int ShmConfigLoader::AnalyseConfig(const char *conf,
 	char buffer[1024] = {0};
 	while (fgets(buffer, sizeof(buffer) - 1, fconf))
 	{
-		TrimString(buffer);
-		// 忽略注释
-		if (buffer[0] == '\0' || buffer[0] == '#' || strncmp(buffer, "//", 2) == 0) 
+		if (PreHandleInput(buffer) == false) 
 		{
 			continue;
 		}
@@ -236,8 +261,7 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 	bool isFirstSection = true;
 	while (fgets(buffer, sizeof(buffer)-1, fconf))
 	{
-		TrimString(buffer);
-		if (buffer[0] == '\0' || buffer[0] == '#' || strncmp(buffer, "//", 2) == 0)
+		if (PreHandleInput(buffer) == false)
 		{
 			continue;
 		}

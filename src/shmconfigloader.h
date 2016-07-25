@@ -64,7 +64,18 @@ private:
 	ShmConfigLoader(const ShmConfigLoader &obj){}
 	ShmConfigLoader& operator=(const ShmConfigLoader &r){return *this;}
 
-private:
+private: // function
+	/*
+	 * 删除字符串两端的空白字符
+	 */
+	void TrimString(char *str);
+
+	/*
+	 * 对读取的文件行数据，进行预处理
+	 * @return true，需要进一步处理，false无需进一步处理
+	 */
+	bool PreHandleInput(char *line);
+
 	/*
 	 * MODE_READ模式下,被LoadConfig函数调用,Attach共享内存中的配置对象
 	 */
@@ -89,11 +100,6 @@ private:
 	int GetShm(size_t size);
 	int DetShm();
 
-	/*
-	 * 删除字符串两端的空白字符
-	 */
-	void TrimString(char *str);
-
 	void SortConfig();
 
 	template<typename T>
@@ -105,7 +111,7 @@ private:
 	template<typename T>
 	int BinSearch(const T *elems, size_t size, const char *key)const;
 
-private:
+private: // data
 	int m_shmId;
 	unsigned int m_mode;
 	key_t m_shmKey;
