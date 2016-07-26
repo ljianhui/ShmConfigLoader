@@ -118,7 +118,7 @@ int ShmConfigLoader::AnalyseConfig(const char *conf,
 			// [xxx] => xxx\0
 			bytes += (strlen(buffer) - 1);
 		}
-		else if (sectionCount > 0 && leftBracket == NULL && leftBracket == NULL && equal != NULL)
+		else if (sectionCount > 0 && leftBracket == NULL && rightBracket == NULL && equal != NULL)
 		{
 			++kvCount;
 			// xxx=yyy => xxx\0yyy\0
@@ -317,6 +317,7 @@ int ShmConfigLoader::LoadToShm(const char *conf, size_t sectionCount, size_t kvC
 			++keyValue;
 		}
 	}
+	fclose(fconf);
 	return 0;
 }
 
