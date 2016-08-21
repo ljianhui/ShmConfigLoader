@@ -138,21 +138,21 @@ int ShmConfigLoader::AnalyseConfig(const char *conf,
 
 void ShmConfigLoader::TrimString(char *str)
 {
-	size_t i = 0;
-	for (i = strlen(str) - 1; i >= 0 && IS_SPACE_CHAR(str[i]); --i)
+	char *pc = NULL;
+	for (pc = str + strlen(str) - 1; pc >= str && IS_SPACE_CHAR(*pc); --pc)
 	{
-		str[i] = '\0';
+		*pc = '\0';
 	}
 
-	for (i = 0; str[i] != '\0' && IS_SPACE_CHAR(str[i]); ++i);
-	if (i != 0)
+	for (pc = str; *pc != '\0' && IS_SPACE_CHAR(*pc); ++pc);
+	if (pc != str)
 	{
-		char *pc1 = str;
-		for (char *pc2 = str + i; *pc2; ++pc1, ++pc2)
+		char *dst = NULL;
+		for (dst = str; *pc; ++pc, ++dst)
 		{
-			*pc1 = *pc2;
+			*dst = *pc;
 		}
-		*pc1 = '\0';
+		*dst = '\0';
 	}
 }
 
